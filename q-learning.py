@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import time
 import random
+import matplotlib.pyplot as plt
 
 from coppeliasim_zmqremoteapi_client import RemoteAPIClient
 
@@ -60,14 +61,20 @@ class P3DX():
 
 # DIMENSIONES Q-TABLE
 NUM_STATES = 7
-NUM_ACTIONS = 5
+NUM_ACTIONS = 7
 
 Q = np.zeros((NUM_STATES, NUM_ACTIONS))
 
 # HIPERPARÁMETROS
-EPSILON = 0.01  # exploración
-ALPHA = 0.2     # tasa de aprendizaje
-GAMMA = 0.9     # factor de descuento
+EPSILON_START = 0.1   # exploración: epsilon-decay (definir start=0 para epsilon constante)
+EPSILON_MIN = 0
+EPSILON_DECAY = 0.98
+
+ALPHA_START = 0.4     # tasa de aprendizaje: alpha-decay (definir start=0 para alpha constante)
+ALPHA_MIN = 0.05
+ALPHA_DECAY = 0.98
+
+GAMMA = 0.9           # factor de descuento
 
 
 def process_image(image):
@@ -100,13 +107,13 @@ def get_state_from_image(image):
     offset_norm = offset / max_offset
 
     # discretización
-    state = int((offset_norm + 1) / (2 / NUM_STATES))
+    state = min((NUM_STATES - 1), int((offset_norm + 1) / (2 / NUM_STATES)))
 
     return state, offset_norm
     
 
-def choose_action(state):
-    if np.random.rand() < EPSILON:
+def choose_action(state, epsilon):
+    if np.random.rand() < epsilon:
         return random.randint(0, NUM_ACTIONS - 1)
     
     return np.argmax(Q[state])
@@ -137,8 +144,7 @@ def check_completed(sim, goal_sensor):
     return result
 
 
-TERMINATE = False
-EPISODES = 50
+EPISODES = 100
 
 def main(args=None):
     print(f'\n--- Iniciando entrenamiento con {NUM_STATES} estados y {NUM_ACTIONS} acciones ---')
@@ -147,32 +153,37 @@ def main(args=None):
     goal_sensor = coppelia.sim.getObject('/proximitySensor')
     coppelia.start_simulation()
 
-    completed = False
     reward_per_episode = []
+    offset_per_episode = []
 
     start_time = time.time()
 
     try:
         for episode in range(EPISODES):
+            epsilon = max(EPSILON_MIN, EPSILON_START * (EPSILON_DECAY ** episode))
+            alpha = max(ALPHA_MIN, ALPHA_START * (ALPHA_DECAY ** episode))
+
             total_reward = 0
+            total_offset = 0
             steps = 0
-            delay = 20
+            delay = 500
 
             while coppelia.is_running():
                 image = robot.get_image()
                 state, _ = get_state_from_image(image)
-                action = choose_action(state)
+                action = choose_action(state, epsilon)
                 apply_action(robot, action)
-
-                time.sleep(0.05)  # Esperar a que avance
 
                 new_image = robot.get_image()
                 new_state, offset = get_state_from_image(new_image)
                 reward = get_reward(new_state, offset)
                 total_reward += reward
+                total_offset += abs(offset)
 
                 # Actualizar Q-table
-                Q[state, action] += ALPHA * (reward + GAMMA * np.max(Q[new_state]) - Q[state, action])
+                Q[state, action] += alpha * (reward + GAMMA * np.max(Q[new_state]) - Q[state, action])
+
+                steps += 1
 
                 # Reiniciar si pierde la línea
                 if state == -1:
@@ -180,35 +191,38 @@ def main(args=None):
 
                 # terminar si se completa el circuito
                 if steps > delay and check_completed(coppelia.sim, goal_sensor):
-                    if not completed: 
-                        completed = True
-                        finish_time = time.time()
-                        episode_completed = episode + 1
                     break
 
-                steps += 1
-
+            offset_per_episode.append(total_offset / steps)
             reward_per_episode.append(total_reward)
+
+            print(f'--- Episodio: {episode} --- Alpha: {round(alpha, 2)}--- Epsilon: {round(epsilon, 2)} ---')
 
             robot.reset_position()
 
-            if not coppelia.is_running() or (TERMINATE and completed):
+            if not coppelia.is_running():
                 break
 
-        # visualización de resultados (*INCORPORAR GRÁFICAS*)
-        if completed: 
-            print('\n--- PRIMERA VUELTA COMPLETADA EN ---')
-            print(f'Tiempo: {round(finish_time - start_time, 2)}s')
-            print(f'Episodios: {episode_completed}')
-        else:
-            finish_time = time.time()
-            print('\n--- NO SE HA COMPLETADO UNA VUELTA ---')
-            print(f'Tiempo: {round(finish_time - start_time, 2)}s')
-            print(f'Episodios: {len(reward_per_episode)}')
+        finish_time = time.time()
 
-        print('\n--- RECOMPENSAS POR EPISODIO ---')
-        for i in range (len(reward_per_episode)):
-            print(f'Episodio {i + 1} -- Recompensa: {reward_per_episode[i]}')
+        # visualización de resultados
+        print('\n--- ENTRENAMIENTO COMPLETADO ---')
+        print(f'Tiempo: {round(finish_time - start_time, 2)}s')
+        print(f'Episodios: {len(reward_per_episode)}')
+
+        plt.plot(reward_per_episode)
+        plt.title(f'Recompensa total por episodio para {NUM_STATES} estados y {NUM_ACTIONS} acciones')
+        plt.xlabel('Episodio')
+        plt.ylabel('Recompensa total')
+        plt.grid(True)
+        plt.show()
+
+        plt.plot(offset_per_episode)
+        plt.title(f'Desplazamiento medio por episodio para {NUM_STATES} estados y {NUM_ACTIONS} acciones')
+        plt.xlabel('Episodio')
+        plt.ylabel('Desplazamiento')
+        plt.grid(True)
+        plt.show()
 
 
     finally:

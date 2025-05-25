@@ -13,3 +13,4 @@ El trabajo trata del diseño e implementación de un controlador para un robot m
 - **q-learning.py:** Contiene la lógica para comunicarse con CoppeliaSim, implementar un agente de aprendizaje por refuerzo con Q-learning, entrenar al agente y visualizar los resultados.
 - **pioneer-tfg.ttt:** Contiene la escena en la que se simula el proceso físico de entrenamiento del agente.
 - **resultados** Contiene las gráficas con los resultados obtenidos durante la evaluación del agente.
+- **docs** Contiene la memoria del Trabajo de Fin de Grado.

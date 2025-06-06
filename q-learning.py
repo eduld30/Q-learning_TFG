@@ -66,13 +66,13 @@ NUM_ACTIONS = 7
 Q = np.zeros((NUM_STATES, NUM_ACTIONS))
 
 # HIPERPARÁMETROS
-EPSILON_START = 0.1   # exploración: epsilon-decay (definir start=0 para epsilon constante)
-EPSILON_MIN = 0
+EPSILON_START = 0   # exploración: epsilon-decay (definir start=0 para epsilon constante)
+EPSILON_MIN = 0.01
 EPSILON_DECAY = 0.98
 
 ALPHA_START = 0.4     # tasa de aprendizaje: alpha-decay (definir start=0 para alpha constante)
 ALPHA_MIN = 0.05
-ALPHA_DECAY = 0.98
+ALPHA_DECAY = 0.975
 
 GAMMA = 0.9           # factor de descuento
 
@@ -144,7 +144,7 @@ def check_completed(sim, goal_sensor):
     return result
 
 
-EPISODES = 100
+EPISODES = 80
 
 def main(args=None):
     print(f'\n--- Iniciando entrenamiento con {NUM_STATES} estados y {NUM_ACTIONS} acciones ---')
